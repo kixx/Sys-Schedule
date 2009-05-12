@@ -1,0 +1,67 @@
+* Sys::Schedule
+** Description
+   Schedule tasks in 'cron' or 'at' style
+
+   The Sys::Schedule distribution allows you to schedule tasks to be run later. You can run tasks once or multiple times. 
+   Tasks can be external commands, perl functions or HTTP requests. You can add new tasks, delete existing ones or check their status
+   via a communication channel such as files, databases, HTTP, IRC or XMPP.
+
+** Arhitecture
+   
+*** Scheduler
+
+    Tasks are executed from a process called scheduler. The scheduler will sleep until it either:
+    - needs to run a task/wakes up on schedule (depending on run mode)
+    - is woken up (via SIGHUP)
+    - needs to rescan task configuration (if configured)
+   
+    The scheduler has an execution queue, a list of tasks and their next execution time. 
+    
+    In periodic run mode, the scheduler will wake up at configured intervals and perform an execution cycle
+
+    In on-demand run mode, the scheduler sleep until the most early execution time then upon waking up it will 
+    perform an execution cycle.
+
+    In each execution cycle, the scheduler will execute outstanding tasks (i.e. tasks whose execution time has passed or is now, starting with tasks with 
+    the oldest execution time). It will examine each task's status and if requested it will remove that task from the execution queue. The executed tasks which 
+    provide a next execution time will be rescheduled with this time. If the execution queue becomes empty it will switch scan mode on (if not already on).
+
+    If the task receives a SIGHUP, it will perform a scheduling cycle.
+
+    In each scheduling cycle, the scheduler will scan all communication channels, and process all administration requests.
+
+    Administration requests can:
+    - add new tasks
+    - remove existing tasks
+    - query the status of a task
+    - change the scheduler configuration
+
+    Cycles (either scheduling or execution ones) will not interrupt each other. This will be implemented via locks or semaphores.
+
+    If scan mode is enabled, the scheduler will perform a scan task which consists of a scheduling cycle scheduled to be repeated at a configured interval.
+
+    If persistent mode is enabled, the scheduler will store it's configuration and the current execution queue to a file or database after each cycle. Tasks will have 
+    the opportunity to store state if they request so explicitly, via a callback which will be executed after each cycle.
+
+*** Communication channels
+
+    The scheduler communicates via a communication channel. Channels can be:
+    - synchronous - HTTP, IRC, XMPP
+    - asynchronous - files, databases, MQ
+
+    Asynchronous channels are scanned regularly for new requests.
+
+    Synchronous channels are handled via a server process.
+
+*** Server
+
+    If a synchronous communication channel is used (such as HTTP or IRC) a further process called server will receive requests and deliver responses (when possible).
+    Each request will be assigned an ID and the requesting client will be notified of the request ID. The client can then poll for the response or receive the 
+    response via a Pub/Sub mechanism provided by the communication channel.
+
+** Concepts and Objects   
+
+*** Task object
+
+    Each task will be initialized with an execution schedule and a job. Tasks will have to provide a next execution time upon request and report a status after each execution.
+    Tasks will be able to remove themselves from the execution queue.
